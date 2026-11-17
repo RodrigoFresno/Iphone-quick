@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#f7f5f2">
+<link rel="manifest" href="./manifest.webmanifest">
+<title>Quick Particle</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;touch-action:none;background:#f7f5f2;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display",sans-serif}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+.ui{position:fixed;left:14px;right:14px;bottom:calc(14px + env(safe-area-inset-bottom));max-width:390px;margin:auto;border:1px solid rgba(35,80,150,.12);border-radius:20px;padding:13px 15px;background:rgba(255,255,255,.78);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);box-shadow:0 8px 35px #385b8b12;transition:.3s}
+.ui.hide{transform:translateY(130%);opacity:0;pointer-events:none}
+.top{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:#344c70;font-weight:650;margin-bottom:10px}
+.row{display:flex;gap:12px;align-items:center}.row+ .row{margin-top:9px}
+label{font-size:11px;color:#526783;flex:1}input[type=color]{width:28px;height:28px;border:0;padding:0;background:none}input[type=range]{width:58%;accent-color:#3989e9}
+button{border:1px solid #dce6f1;background:#fff;color:#38577d;border-radius:12px;padding:8px 12px;font-size:11px}
+#hide{position:fixed;top:calc(12px + env(safe-area-inset-top));right:14px;border-radius:50%;width:36px;height:36px;font-size:16px;background:#ffffffaa}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="hide" aria-label="Controles">⌄</button>
+<div class="ui" id="ui">
+ <div class="top"><span>PARTICLE FIELD</span><span>INTERACTIVE</span></div>
+ <div class="row"><label for="color">Cor das partículas</label><input id="color" type="color" value="#2786ed"></div>
+ <div class="row"><label for="size">Tamanho do campo</label><input id="size" type="range" min="0.65" max="1.25" step=".01" value="1"></div>
+ <div class="row"><label for="motion">Velocidade orbital</label><input id="motion" type="range" min=".2" max="2" step=".05" value="1"></div>
+ <div class="row"><label for="count">Densidade</label><input id="count" type="range" min=".5" max="1.8" step=".05" value="1"></div>
+ <div class="row" style="justify-content:flex-end"><button id="reset">Reiniciar campo</button><button id="full">Tela cheia</button></div>
+</div>
+<script>
+(()=>{
+const canvas=document.querySelector('#c'),ctx=canvas.getContext('2d',{alpha:false});
+let W,H,D,parts=[],base='#2786ed',scale=1,speed=1,density=1,touch={x:-1000,y:-1000,down:false,px:-1000,py:-1000};
+const TAU=Math.PI*2,rand=(a,b)=>a+Math.random()*(b-a);
+function rgb(hex){let n=parseInt(hex.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255]}
+function resize(){D=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;canvas.width=W*D;canvas.height=H*D;ctx.setTransform(D,0,0,D,0,0);seed()}
+function seed(){
+ const c=Math.min(11500,Math.floor(6500*density));parts=[];
+ for(let i=0;i<c;i++){
+  // Radial distribution: a soft, dense cloud with a more defined outer rim.
+  let a=rand(0,TAU),u=Math.random(),r;
+  if(u<.68)r=Math.sqrt(Math.random())*.92;
+  else r=.72+rand(0,.34);
+  parts.push({a,r,phase:rand(0,TAU),orbit:rand(.72,1.3),size:rand(.25,1.05),alpha:rand(.12,.68),z:rand(.25,1),seed:rand(0,1000),vx:0,vy:0});
+ }
+}
+function pointer(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+canvas.addEventListener('pointerdown',e=>{let p=pointer(e);touch.x=touch.px=p.x;touch.y=touch.py=p.y;touch.down=true;canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointermove',e=>{let p=pointer(e);touch.px=touch.x;touch.py=touch.y;touch.x=p.x;touch.y=p.y});
+function release(){touch.down=false;touch.x=touch.y=-1000}
+canvas.addEventListener('pointerup',release);canvas.addEventListener('pointercancel',release);
+let last=0;
+function draw(t){
+ const dt=Math.min((t-last)/16.67||1,2);last=t;
+ // Warm, near-white screen matching the supplied reference recording.
+ ctx.globalCompositeOperation='source-over';ctx.fillStyle='rgba(248,246,243,.28)';ctx.fillRect(0,0,W,H);
+ const cx=W*.5,cy=H*.49,R=Math.min(W,H)*.245*scale;
+ const col=rgb(base),rot=t*.00022*speed;
+ // Very faint diffuse blue haze underneath the granular cloud.
+ const haze=ctx.createRadialGradient(cx,cy,R*.18,cx,cy,R*1.18);
+ haze.addColorStop(0,'rgba(90,155,235,0)');haze.addColorStop(.58,`rgba(${col[0]},${col[1]},${col[2]},.035)`);haze.addColorStop(.83,`rgba(${col[0]},${col[1]},${col[2]},.095)`);haze.addColorStop(1,'rgba(100,160,235,0)');
+ ctx.fillStyle=haze;ctx.beginPath();ctx.arc(cx,cy,R*1.2,0,TAU);ctx.fill();
+ ctx.globalCompositeOperation='multiply';
+ for(let i=0;i<parts.length;i++){
+  const p=parts[i],a=p.a+rot*p.orbit;
+  const wobble=Math.sin(t*.0007+p.phase)*.025+Math.sin(t*.0011+p.seed)*.012;
+  let rr=p.r+wobble;
+  // Soft circular swirl with small radial eddies; no unrelated waves or trails.
+  const angle=a+Math.sin(a*5+t*.00035+p.seed)*.018;
+  let x=cx+Math.cos(angle)*R*rr*p.z,y=cy+Math.sin(angle)*R*rr*p.z*.96;
+  let dx=x-touch.x,dy=y-touch.y,dist=Math.hypot(dx,dy);
+  if(dist< R*.72){
+   const influence=(1-dist/(R*.72));
+   const tangential=(touch.down?1.2:.45)*influence;
+   const deform=(touch.down?.22:.065)*influence;
+   const tx=-dy/(dist+1),ty=dx/(dist+1);
+   x+=tx*tangential*R*.15+(x-cx)*deform;
+   y+=ty*tangential*R*.15+(y-cy)*deform;
+  }
+  // More luminous fragments gather around the perimeter, with sparse bright flecks.
+  const rim=Math.max(0,1-Math.abs(rr-.88)/.24);
+  const turbulence=.72+.28*Math.sin(t*.001+p.phase);
+  const alpha=Math.min(.78,p.alpha*(.42+rim*.95)*turbulence);
+  const radius=p.size*(.55+rim*.7)*(0.65+p.z*.5);
+  ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${alpha})`;
+  ctx.beginPath();ctx.arc(x,y,radius,0,TAU);ctx.fill();
+ }
+ // A few tiny, fine filaments in the moving rim add the powdery, fibrous edge.
+ ctx.globalCompositeOperation='source-over';
+ for(let k=0;k<110;k++){
+  let a=rand(0,TAU),r=R*rand(.78,1.03),x=cx+Math.cos(a+rot)*r,y=cy+Math.sin(a+rot)*r*.96;
+  let len=rand(2,9),ang=a+Math.PI/2+rand(-.45,.45);
+  ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},${rand(.025,.12)})`;ctx.lineWidth=.45;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+Math.cos(ang)*len,y+Math.sin(ang)*len);ctx.stroke();
+ }
+ requestAnimationFrame(draw);
+}
+document.querySelector('#color').oninput=e=>{base=e.target.value};
+document.querySelector('#size').oninput=e=>{scale=+e.target.value};
+document.querySelector('#motion').oninput=e=>{speed=+e.target.value};
+document.querySelector('#count').oninput=e=>{density=+e.target.value;seed()};
+document.querySelector('#reset').onclick=()=>{touch.x=touch.y=-1000;seed()};
+document.querySelector('#full').onclick=()=>{if(!document.fullscreenElement)document.documentElement.requestFullscreen?.();else document.exitFullscreen?.()};
+document.querySelector('#hide').onclick=()=>{document.querySelector('#ui').classList.toggle('hide');document.querySelector('#hide').textContent=document.querySelector('#ui').classList.contains('hide')?'⌃':'⌄'};
+addEventListener('resize',resize);resize();requestAnimationFrame(draw);
+if('serviceWorker'in navigator&&location.protocol.startsWith('http'))addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));
+})();
+</script>
+</body></html>
